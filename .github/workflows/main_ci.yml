@@ -4,7 +4,11 @@ name: Main CI
 # Pipeline meant to run on pull-requests
 on: 
   workflow_dispatch: {}
-  pull_request: {}
+  release:
+    types: [created]
+  push:
+    branches:
+      - main
 
 jobs:
   # stage 1: smoke tests
