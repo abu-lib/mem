@@ -18,14 +18,14 @@
 #include "abu/base.h"
 
 #ifndef ABU_MEM_ASSUMPTIONS
-#define ABU_MEM_ASSUMPTIONS assume
+#define ABU_MEM_ASSUMPTIONS assume  // NOLINT
 #endif
 
 #ifndef ABU_MEM_PRECONDITIONS
 #ifdef NDEBUG
-#define ABU_MEM_PRECONDITIONS assume
+#define ABU_MEM_PRECONDITIONS assume  // NOLINT
 #else
-#define ABU_MEM_PRECONDITIONS verify
+#define ABU_MEM_PRECONDITIONS verify  // NOLINT
 #endif
 #endif
 
