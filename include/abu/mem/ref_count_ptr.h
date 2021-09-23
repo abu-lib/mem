@@ -53,7 +53,7 @@ struct intrusively_ref_counted_traits<T> {
     rc->ref_count_ += 1;
   }
 
-  static void remove_ref(gsl::owner<T>* obj) {
+  static void remove_ref(gsl::owner<T*> obj) {
     auto rc = static_cast<ref_counted*>(obj);
     rc->ref_count_ -= 1;
     if (rc->ref_count_ == 0) {
@@ -102,7 +102,7 @@ namespace details_ {
     }
 
     ~referenced_shared_state() {
-      delete reinterpret_cast<gsl::owner<T>*>(ptr);
+      delete reinterpret_cast<gsl::owner<T*>>(ptr);
     }
   };
 
@@ -150,7 +150,7 @@ namespace details_ {
         return intrusively_ref_counted_traits<T>::use_count(
             resolve(shared_state));
       } else {
-        gsl::owner<basic_shared_state>* bss =
+        gsl::owner<basic_shared_state*> bss =
             reinterpret_cast<basic_shared_state*>(shared_state);
         return bss->ref_count;
       }
