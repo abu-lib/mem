@@ -63,7 +63,7 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-12 100
 
       - name: Configure CMake
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DABU_HEADER_CHECKS=ON
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DABU_HEADER_CHECKS=ON -DABU_BENCHMARKS=ON
 
       - name: Normalize directory structure
         run: |
@@ -125,7 +125,7 @@ jobs:
           echo "$HOME/.sonar/sonar-scanner-${{ env.SONAR_SCANNER_VERSION }}-linux/bin" >> $GITHUB_PATH
 
       - name: Configure CMake
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DABU_HEADER_CHECKS=ON -DABU_COVERAGE=ON
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DABU_HEADER_CHECKS=ON -DABU_COVERAGE=ON -DABU_BENCHMARKS=ON
 
       - name: Build
         run: cmake --build ${{github.workspace}}/build
