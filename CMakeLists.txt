@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(abu_mem VERSION 0.2.1)
+project(abu_mem VERSION 0.1.0)
 
 set(ABU_REPO_PREFIX https://github.com/abu-lib/ CACHE STRING "")
 
