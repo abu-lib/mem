@@ -1,13 +1,10 @@
 name: Main CI
 
+
 # Pipeline meant to run on pull-requests
 on: 
   workflow_dispatch: {}
-  release:
-    types: [created]
-  push:
-    branches:
-      - main
+  pull_request: {}
 
 jobs:
   # stage 1: smoke tests
@@ -63,7 +60,7 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-12 100
 
       - name: Configure CMake
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DABU_HEADER_CHECKS=ON -DABU_BENCHMARKS=ON
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DABU_HEADER_CHECKS=ON
 
       - name: Normalize directory structure
         run: |
@@ -74,7 +71,7 @@ jobs:
 
       - name: Check with clang-tidy
         run: |  
-          find build/abu_header_checks src tests benchmarks -regex '.*\.\(cpp\)' -exec clang-tidy -format-style=file -p build {} +
+          find build/abu_header_checks src tests -regex '.*\.\(cpp\)' -exec clang-tidy -format-style=file -p build {} +
 
   sonarqube:
     needs: [lint, smoke-test]
@@ -125,7 +122,7 @@ jobs:
           echo "$HOME/.sonar/sonar-scanner-${{ env.SONAR_SCANNER_VERSION }}-linux/bin" >> $GITHUB_PATH
 
       - name: Configure CMake
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DABU_HEADER_CHECKS=ON -DABU_COVERAGE=ON -DABU_BENCHMARKS=ON
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DABU_HEADER_CHECKS=ON -DABU_COVERAGE=ON
 
       - name: Build
         run: cmake --build ${{github.workspace}}/build
