@@ -22,21 +22,122 @@
 
 namespace gsl {
 template <typename T>
+concept Pointer = std::is_pointer_v<T>;
+
+template <Pointer T>
 using owner = T;
-}
+
+}  // namespace gsl
 
 namespace abu::mem {
 
+namespace details_ {
+struct basic_shared_state {
+  basic_shared_state() = default;
+  basic_shared_state(const basic_shared_state&) = delete;
+  basic_shared_state(basic_shared_state&&) = delete;
+  basic_shared_state& operator=(const basic_shared_state&) = delete;
+  basic_shared_state& operator=(basic_shared_state&&) = delete;
+
+  virtual ~basic_shared_state() {}
+
+  long ref_count = 0;
+  void* ptr = nullptr;
+};
+
 template <typename T>
-struct intrusively_ref_counted_traits;
+struct owned_shared_state : basic_shared_state {
+  template <typename... Args>
+  owned_shared_state(Args&&... args) : obj(std::forward<Args>(args)...) {
+    ptr = &obj;
+  }
+
+  owned_shared_state(const owned_shared_state&) = delete;
+  owned_shared_state(owned_shared_state&&) = delete;
+  owned_shared_state& operator=(const owned_shared_state&) = delete;
+  owned_shared_state& operator=(owned_shared_state&&) = delete;
+  ~owned_shared_state() = default;
+
+  T obj;
+};
+
+template <typename T>
+struct referenced_shared_state : basic_shared_state {
+  referenced_shared_state(T* init) {
+    ptr = init;
+  }
+  referenced_shared_state(const referenced_shared_state&) = delete;
+  referenced_shared_state(referenced_shared_state&&) = delete;
+  referenced_shared_state& operator=(const referenced_shared_state&) = delete;
+  referenced_shared_state& operator=(referenced_shared_state&&) = delete;
+
+  ~referenced_shared_state() {
+    delete static_cast<T*>(ptr);
+  }
+};
+}  // namespace details_
+
+template <typename T>
+struct ref_count_traits {
+  static gsl::owner<void*> create_shared_state(T* ptr) noexcept {
+    assume(ptr);
+    gsl::owner<details_::referenced_shared_state<T>*> shared_state =
+        new details_::referenced_shared_state<T>(ptr);
+    shared_state->ref_count = 1;
+    return shared_state;
+  }
+
+  static void add_ref(void* shared_state) noexcept {
+    assume(shared_state);
+    auto bss = static_cast<details_::basic_shared_state*>(shared_state);
+
+    bss->ref_count += 1;
+  }
+
+  static void remove_ref(void* shared_state) noexcept {
+    assume(shared_state);
+    gsl::owner<details_::basic_shared_state*> bss =
+        static_cast<gsl::owner<details_::basic_shared_state*>>(shared_state);
+
+    assume(bss->ref_count > 0);
+    bss->ref_count -= 1;
+
+    if (bss->ref_count == 0) {
+      delete bss;
+    }
+  }
+
+  static long use_count(void* shared_state) noexcept {
+    assume(shared_state);
+    auto bss = static_cast<details_::basic_shared_state*>(shared_state);
+
+    return bss->ref_count;
+  }
+
+  static T* resolve(void* shared_state) noexcept {
+    assume(shared_state);
+    auto bss = static_cast<details_::basic_shared_state*>(shared_state);
+
+    return static_cast<T*>(bss->ptr);
+  }
+
+  template <typename... Args>
+  static void* make_obj_and_shared_state(Args&&... args) {
+    gsl::owner<details_::basic_shared_state*> shared_state =
+        new details_::owned_shared_state<T>(std::forward<Args>(args)...);
+    shared_state->ref_count = 1;
+    return shared_state;
+  }
+};
 
 class ref_counted {
   template <typename T>
-  friend struct intrusively_ref_counted_traits;
+  friend struct ref_count_traits;
 
   long ref_count_ = 0;
 
  protected:
+  // Not virtual on purpose.
   ~ref_counted() = default;
 
   ref_counted() = default;
@@ -47,140 +148,53 @@ class ref_counted {
 };
 
 template <std::derived_from<ref_counted> T>
-struct intrusively_ref_counted_traits<T> {
-  static void add_ref(T* obj) {
-    auto rc = static_cast<ref_counted*>(obj);
+struct ref_count_traits<T> {
+  static ref_counted* create_shared_state(T* ptr) noexcept {
+    assume(ptr);
+    ptr->ref_count_ += 1;
+    return ptr;
+  }
+
+  static void add_ref(void* shared_state) noexcept {
+    assume(shared_state);
+    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+
     rc->ref_count_ += 1;
   }
 
-  static void remove_ref(gsl::owner<T*> obj) {
-    auto rc = static_cast<ref_counted*>(obj);
+  static void remove_ref(void* shared_state) noexcept {
+    assume(shared_state);
+    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+
+    assume(rc->ref_count_ > 0);
+
     rc->ref_count_ -= 1;
     if (rc->ref_count_ == 0) {
+      gsl::owner<T*> obj = static_cast<gsl::owner<T*>>(rc);
       delete obj;
     }
   }
 
-  static long use_count(T* obj) {
-    auto rc = static_cast<ref_counted*>(obj);
+  static long use_count(void* shared_state) noexcept {
+    assume(shared_state);
+    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+
     return rc->ref_count_;
+  }
+
+  static T* resolve(void* shared_state) noexcept {
+    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+    return static_cast<T*>(rc);
+  }
+
+  template <typename... Args>
+  static void* make_obj_and_shared_state(Args&&... args) {
+    gsl::owner<ref_counted*> result = new T(std::forward<Args>(args)...);
+    result->ref_count_ = 1;
+    return result;
   }
 };
 
-template <typename T>
-concept IntrusivelyRefCouted = requires(T* obj) {
-  intrusively_ref_counted_traits<T>::add_ref(obj);
-  intrusively_ref_counted_traits<T>::remove_ref(obj);
-  { intrusively_ref_counted_traits<T>::use_count(obj) } -> std::same_as<long>;
-};
-
-// Specialize this on whichever type you want to reference_count
-namespace details_ {
-  struct basic_shared_state {
-    virtual ~basic_shared_state() = default;
-    void* resolve() noexcept {
-      return ptr;
-    }
-
-    long ref_count;
-    void* ptr;
-  };
-
-  template <typename T>
-  struct owned_shared_state : public basic_shared_state {
-    template <typename... Args>
-    owned_shared_state(Args&&... args) : obj(std::forward<Args>(args)...) {
-      ptr = &obj;
-    }
-    T obj;
-  };
-
-  template <typename T>
-  struct referenced_shared_state : public basic_shared_state {
-    referenced_shared_state(T* init) {
-      ptr = init;
-    }
-
-    ~referenced_shared_state() {
-      delete reinterpret_cast<gsl::owner<T*>>(ptr);
-    }
-  };
-
-  template <typename T>
-  struct ref_count_traits {
-    static void* create_shared_state(T* ptr) noexcept {
-      assume(ptr);
-      if constexpr (IntrusivelyRefCouted<T>) {
-        intrusively_ref_counted_traits<T>::add_ref(ptr);
-        return ptr;
-      } else {
-        auto bss = new referenced_shared_state<T>(ptr);
-        bss->ref_count = 1;
-        return bss;
-      }
-    }
-
-    static void add_ref(void* shared_state) noexcept {
-      assume(shared_state);
-      if constexpr (IntrusivelyRefCouted<T>) {
-        intrusively_ref_counted_traits<T>::add_ref(resolve(shared_state));
-      } else {
-        auto bss = reinterpret_cast<basic_shared_state*>(shared_state);
-        bss->ref_count += 1;
-      }
-    }
-
-    static void remove_ref(void* shared_state) noexcept {
-      assume(shared_state);
-      if constexpr (IntrusivelyRefCouted<T>) {
-        intrusively_ref_counted_traits<T>::remove_ref(resolve(shared_state));
-      } else {
-        auto bss = reinterpret_cast<basic_shared_state*>(shared_state);
-        assume(bss->ref_count > 0);
-        bss->ref_count -= 1;
-        if (bss->ref_count == 0) {
-          delete bss;
-        }
-      }
-    }
-
-    static long use_count(void* shared_state) noexcept {
-      assume(shared_state);
-      if constexpr (IntrusivelyRefCouted<T>) {
-        return intrusively_ref_counted_traits<T>::use_count(
-            resolve(shared_state));
-      } else {
-        gsl::owner<basic_shared_state*> bss =
-            reinterpret_cast<basic_shared_state*>(shared_state);
-        return bss->ref_count;
-      }
-    }
-
-    static T* resolve(void* shared_state) noexcept {
-      assume(shared_state);
-      if constexpr (IntrusivelyRefCouted<T>) {
-        return static_cast<T*>(shared_state);
-      } else {
-        auto bss = reinterpret_cast<basic_shared_state*>(shared_state);
-        return reinterpret_cast<T*>(bss->resolve());
-      }
-    }
-
-    template <typename... Args>
-    static void* make_obj_and_shared_state(Args&&... args) {
-      if constexpr (IntrusivelyRefCouted<T>) {
-        return create_shared_state(new T(std::forward<Args>(args)...));
-      } else {
-        auto bss = new owned_shared_state<T>(std::forward<Args>(args)...);
-        bss->ref_count = 1;
-        return bss;
-      }
-    }
-  };
-
-}  // namespace details_
-
-// N.B. We want to make sure that linked lists of reference count are feasible.
 template <typename T>
 class ref_count_ptr {
  public:
@@ -192,14 +206,14 @@ class ref_count_ptr {
 
   explicit ref_count_ptr(T* ptr) noexcept {
     if (ptr) {
-      shared_state_ = details_::ref_count_traits<T>::create_shared_state(ptr);
+      shared_state_ = ref_count_traits<T>::create_shared_state(ptr);
     }
   }
 
   template <std::derived_from<T> Y>
   explicit ref_count_ptr(Y* ptr) noexcept {
     if (ptr) {
-      shared_state_ = details_::ref_count_traits<T>::create_shared_state(ptr);
+      shared_state_ = ref_count_traits<T>::create_shared_state(ptr);
     }
   }
 
@@ -270,7 +284,7 @@ class ref_count_ptr {
   // ********** get() **********
   element_type* get() const noexcept {
     if (shared_state_) {
-      return details_::ref_count_traits<T>::resolve(shared_state_);
+      return ref_count_traits<T>::resolve(handle_());
     }
     return nullptr;
   }
@@ -279,14 +293,14 @@ class ref_count_ptr {
   T& operator*() const noexcept {
     precondition(shared_state_, "accessing null pointer");
 
-    return *details_::ref_count_traits<T>::resolve(shared_state_);
+    return *ref_count_traits<T>::resolve(handle_());
   }
 
   // ********** operator->() **********
   T* operator->() const noexcept {
     precondition(shared_state_, "accessing null pointer");
 
-    return details_::ref_count_traits<T>::resolve(shared_state_);
+    return ref_count_traits<T>::resolve(handle_());
   }
 
   // ********** use_count() **********
@@ -294,7 +308,7 @@ class ref_count_ptr {
     if (!shared_state_) {
       return 0;
     }
-    return details_::ref_count_traits<T>::use_count(shared_state_);
+    return ref_count_traits<T>::use_count(handle_());
   }
 
   // ********** operator bool() **********
@@ -303,19 +317,23 @@ class ref_count_ptr {
   }
 
  private:
+  void* handle_() const noexcept {
+    return shared_state_;
+  }
+
   void clear_() noexcept {
     shared_state_ = nullptr;
   }
 
   void add_ref_() noexcept {
     if (shared_state_) {
-      details_::ref_count_traits<T>::add_ref(shared_state_);
+      ref_count_traits<T>::add_ref(handle_());
     }
   }
 
   void release_() noexcept {
     if (shared_state_) {
-      details_::ref_count_traits<T>::remove_ref(shared_state_);
+      ref_count_traits<T>::remove_ref(handle_());
     }
   }
 
@@ -340,9 +358,8 @@ void swap(ref_count_ptr<T>& lhs, ref_count_ptr<T>& rhs) noexcept {
 template <typename T, typename... Args>
 ref_count_ptr<T> make_ref_counted(Args&&... args) {
   ref_count_ptr<T> result;
-  result.shared_state_ =
-      details_::ref_count_traits<T>::make_obj_and_shared_state(
-          std::forward<Args>(args)...);
+  result.shared_state_ = ref_count_traits<T>::make_obj_and_shared_state(
+      std::forward<Args>(args)...);
   return result;
 }
 

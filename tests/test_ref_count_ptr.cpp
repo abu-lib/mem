@@ -19,10 +19,14 @@
 
 using namespace abu;
 
+namespace {
 TEST(ref_counted, pointer_of_arithmetic_type) {
+  const int v_1 = 5;
+  const int v_2 = 4;
+
   mem::ref_count_ptr<int> x;
-  mem::ref_count_ptr<int> y{new int(5)};
-  auto z = abu::mem::make_ref_counted<int>(4);
+  mem::ref_count_ptr<int> y{new int(v_1)};
+  auto z = abu::mem::make_ref_counted<int>(v_2);
   auto w = z;
 
   EXPECT_EQ(z.use_count(), 2);
@@ -40,6 +44,11 @@ TEST(ref_counted, object_gets_deleted) {
     ObjType(int& tgt) : tgt_(tgt) {
       tgt_ = 1;
     }
+    ObjType(const ObjType&) = delete;
+    ObjType(ObjType&&) = delete;
+    ObjType& operator=(const ObjType&) = delete;
+    ObjType& operator=(ObjType&&) = delete;
+
     ~ObjType() {
       tgt_ = 2;
     }
@@ -85,6 +94,11 @@ TEST(ref_counted, default_pointer) {
 
 TEST(ref_counted, init_base_from_derived_raw_ptr) {
   struct Base : public mem::ref_counted {
+    Base() = default;
+    Base(const Base&) = delete;
+    Base(Base&&) = delete;
+    Base& operator=(const Base&) = delete;
+    Base& operator=(Base&&) = delete;
     virtual ~Base() = default;
   };
   struct Derived : public Base {};
@@ -100,21 +114,26 @@ TEST(ref_counted, init_base_from_derived_raw_ptr) {
 }
 
 TEST(ref_counted, move_and_copy_pointers) {
-  struct ObjType : public mem::ref_counted {
-    virtual ~ObjType() = default;
+  struct Base : public mem::ref_counted {
+    Base() = default;
+    Base(const Base&) = delete;
+    Base(Base&&) = delete;
+    Base& operator=(const Base&) = delete;
+    Base& operator=(Base&&) = delete;
+    virtual ~Base() = default;
   };
-  struct Derived : public ObjType {};
+  struct Derived : public Base {};
 
   mem::ref_count_ptr<Derived> dx = mem::make_ref_counted<Derived>();
-  mem::ref_count_ptr<ObjType> dxb;
+  mem::ref_count_ptr<Base> dxb;
   dxb = dx;
   EXPECT_EQ(dx, dxb);
 
-  mem::ref_count_ptr<ObjType> x = mem::make_ref_counted<ObjType>();
+  mem::ref_count_ptr<Base> x = mem::make_ref_counted<Base>();
 
   auto ptr = x.get();
 
-  mem::ref_count_ptr<ObjType> y = std::move(x);
+  mem::ref_count_ptr<Base> y = std::move(x);
   EXPECT_FALSE(x);
   EXPECT_EQ(y.get(), ptr);
 
@@ -133,6 +152,11 @@ TEST(ref_counted, move_and_copy_pointers) {
 
 TEST(ref_counted, compare) {
   struct Base : public mem::ref_counted {
+    Base() = default;
+    Base(const Base&) = delete;
+    Base(Base&&) = delete;
+    Base& operator=(const Base&) = delete;
+    Base& operator=(Base&&) = delete;
     virtual ~Base() = default;
   };
 
@@ -164,6 +188,11 @@ TEST(ref_counted, compare) {
 
 TEST(ref_counted, polymorphic_destruction) {
   struct Base : public mem::ref_counted {
+    Base() = default;
+    Base(const Base&) = delete;
+    Base(Base&&) = delete;
+    Base& operator=(const Base&) = delete;
+    Base& operator=(Base&&) = delete;
     virtual ~Base() = default;
   };
 
@@ -195,7 +224,13 @@ TEST(ref_counted, swappable) {
 
 TEST(ref_counted, compatible_pointers) {
   struct Base : public mem::ref_counted {
+    Base() = default;
+    Base(const Base&) = delete;
+    Base(Base&&) = delete;
+    Base& operator=(const Base&) = delete;
+    Base& operator=(Base&&) = delete;
     virtual ~Base() = default;
+
     virtual void foo() = 0;
   };
 
@@ -250,8 +285,14 @@ TEST(ref_counted, can_setup_linked_list) {
 }
 
 TEST(ref_counted, implicitly_ref_counted) {
-  struct Base {
+  struct Base : public mem::ref_counted {
+    Base() = default;
+    Base(const Base&) = delete;
+    Base(Base&&) = delete;
+    Base& operator=(const Base&) = delete;
+    Base& operator=(Base&&) = delete;
     virtual ~Base() = default;
+
     virtual void foo() = 0;
   };
 
@@ -268,3 +309,4 @@ TEST(ref_counted, implicitly_ref_counted) {
   static_assert(!std::is_convertible_v<mem::ref_count_ptr<Derived>,
                                        mem::ref_count_ptr<Unrelated>>);
 }
+}  // namespace

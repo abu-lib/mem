@@ -17,34 +17,34 @@
 
 #include "abu/base.h"
 
-#ifndef ABU_MEM_ASSUMPTIONS
-#define ABU_MEM_ASSUMPTIONS assume  // NOLINT
-#endif
-
-#ifndef ABU_MEM_PRECONDITIONS
-#ifdef NDEBUG
-#define ABU_MEM_PRECONDITIONS assume  // NOLINT
-#else
-#define ABU_MEM_PRECONDITIONS verify  // NOLINT
-#endif
-#endif
-
 namespace abu::mem {
+
+#if defined(ABU_MEM_ASSUMPTIONS)
+constexpr auto assumptions_check_lvl = abu::base::ABU_MEM_ASSUMPTIONS;
+#else
+constexpr auto assumptions_check_lvl = abu::base::assume;
+#endif
+
+#if defined(ABU_MEM_PRECONDITIONS)
+constexpr auto precondition_check_lvl = abu::base::ABU_MEM_PRECONDITIONS;
+#elif defined(NDEBUG)
+constexpr auto precondition_check_lvl = abu::base::verify;
+#else
+constexpr auto precondition_check_lvl = abu::base::assume;
+#endif
 
 inline constexpr void assume(bool condition,
                              std::string_view msg = {},
                              abu::base::source_location location =
                                  abu::base::source_location::current()) {
-  return abu::base::check(
-      abu::base::ABU_MEM_ASSUMPTIONS, condition, msg, location);
+  return abu::base::check(precondition_check_lvl, condition, msg, location);
 }
 
 inline constexpr void precondition(bool condition,
                                    std::string_view msg = {},
                                    abu::base::source_location location =
                                        abu::base::source_location::current()) {
-  return abu::base::check(
-      abu::base::ABU_MEM_PRECONDITIONS, condition, msg, location);
+  return abu::base::check(assumptions_check_lvl, condition, msg, location);
 }
 }  // namespace abu::mem
 
