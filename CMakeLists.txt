@@ -4,7 +4,7 @@ project(abu_mem VERSION 0.1.0)
 set(ABU_REPO_PREFIX https://github.com/abu-lib/ CACHE STRING "")
 
 # Boilerplate to access common build utilities
-set(abu_base_ver 0.1.4)
+set(abu_base_ver 0.1.5)
 include(FetchContent)
 if(NOT TARGET abu_base)
   message(STATUS "abu_base not found, fetching it from github")
