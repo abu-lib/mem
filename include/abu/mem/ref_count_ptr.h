@@ -20,15 +20,6 @@
 
 #include "abu/mem/check.h"
 
-namespace gsl {
-template <typename T>
-concept Pointer = std::is_pointer_v<T>;
-
-template <Pointer T>
-using owner = T;
-
-}  // namespace gsl
-
 namespace abu::mem {
 
 namespace details_ {
@@ -48,7 +39,8 @@ struct basic_shared_state {
 template <typename T>
 struct owned_shared_state final : basic_shared_state {
   template <typename... Args>
-  explicit owned_shared_state(Args&&... args) : obj(std::forward<Args>(args)...) {
+  explicit owned_shared_state(Args&&... args)
+      : obj(std::forward<Args>(args)...) {
     ptr = &obj;
   }
 
@@ -79,10 +71,10 @@ struct referenced_shared_state final : basic_shared_state {
 
 template <typename T>
 struct ref_count_traits {
-  static gsl::owner<void*> create_shared_state(T* ptr) noexcept {
+  static void* create_shared_state(T* ptr) noexcept {
     assume(ptr);
-    gsl::owner<details_::referenced_shared_state<T>*> shared_state =
-        new details_::referenced_shared_state<T>(ptr);
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+    auto shared_state = new details_::referenced_shared_state<T>(ptr);
     shared_state->ref_count = 1;
     return shared_state;
   }
@@ -96,13 +88,13 @@ struct ref_count_traits {
 
   static void remove_ref(void* shared_state) noexcept {
     assume(shared_state);
-    gsl::owner<details_::basic_shared_state*> bss =
-        static_cast<gsl::owner<details_::basic_shared_state*>>(shared_state);
+    auto bss = static_cast<details_::basic_shared_state*>(shared_state);
 
     assume(bss->ref_count > 0);
     bss->ref_count -= 1;
 
     if (bss->ref_count == 0) {
+      // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
       delete bss;
     }
   }
@@ -123,7 +115,8 @@ struct ref_count_traits {
 
   template <typename... Args>
   static void* make_obj_and_shared_state(Args&&... args) {
-    gsl::owner<details_::basic_shared_state*> shared_state =
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+    auto shared_state =
         new details_::owned_shared_state<T>(std::forward<Args>(args)...);
     shared_state->ref_count = 1;
     return shared_state;
@@ -170,7 +163,8 @@ struct ref_count_traits<T> {
 
     rc->ref_count_ -= 1;
     if (rc->ref_count_ == 0) {
-      gsl::owner<T*> obj = static_cast<gsl::owner<T*>>(rc);
+      auto obj = static_cast<T*>(rc);
+      // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
       delete obj;
     }
   }
@@ -188,8 +182,10 @@ struct ref_count_traits<T> {
   }
 
   template <typename... Args>
+
   static void* make_obj_and_shared_state(Args&&... args) {
-    gsl::owner<ref_counted*> result = new T(std::forward<Args>(args)...);
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+    auto result = new T(std::forward<Args>(args)...);
     result->ref_count_ = 1;
     return result;
   }
@@ -318,6 +314,7 @@ class ref_count_ptr {
 
  private:
   void* handle_() const noexcept {
+    // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDelete)
     return shared_state_;
   }
 
