@@ -1,6 +1,6 @@
 // Copyright 2021 Francois Chabot
 
-// Licensed under the Apache License, Version 2.0 (the "License");
+// Licensed under the Apache License, Version 2.0 (the "License")
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 
@@ -39,16 +39,16 @@ struct basic_shared_state {
   basic_shared_state& operator=(const basic_shared_state&) = delete;
   basic_shared_state& operator=(basic_shared_state&&) = delete;
 
-  virtual ~basic_shared_state() {}
+  virtual ~basic_shared_state() = default;
 
   long ref_count = 0;
   void* ptr = nullptr;
 };
 
 template <typename T>
-struct owned_shared_state : basic_shared_state {
+struct owned_shared_state final : basic_shared_state {
   template <typename... Args>
-  owned_shared_state(Args&&... args) : obj(std::forward<Args>(args)...) {
+  explicit owned_shared_state(Args&&... args) : obj(std::forward<Args>(args)...) {
     ptr = &obj;
   }
 
@@ -56,14 +56,14 @@ struct owned_shared_state : basic_shared_state {
   owned_shared_state(owned_shared_state&&) = delete;
   owned_shared_state& operator=(const owned_shared_state&) = delete;
   owned_shared_state& operator=(owned_shared_state&&) = delete;
-  ~owned_shared_state() = default;
+  ~owned_shared_state() override = default;
 
   T obj;
 };
 
 template <typename T>
-struct referenced_shared_state : basic_shared_state {
-  referenced_shared_state(T* init) {
+struct referenced_shared_state final : basic_shared_state {
+  explicit referenced_shared_state(T* init) {
     ptr = init;
   }
   referenced_shared_state(const referenced_shared_state&) = delete;
@@ -71,7 +71,7 @@ struct referenced_shared_state : basic_shared_state {
   referenced_shared_state& operator=(const referenced_shared_state&) = delete;
   referenced_shared_state& operator=(referenced_shared_state&&) = delete;
 
-  ~referenced_shared_state() {
+  ~referenced_shared_state() override {
     delete static_cast<T*>(ptr);
   }
 };
@@ -157,14 +157,14 @@ struct ref_count_traits<T> {
 
   static void add_ref(void* shared_state) noexcept {
     assume(shared_state);
-    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+    auto rc = static_cast<ref_counted*>(shared_state);
 
     rc->ref_count_ += 1;
   }
 
   static void remove_ref(void* shared_state) noexcept {
     assume(shared_state);
-    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+    auto rc = static_cast<ref_counted*>(shared_state);
 
     assume(rc->ref_count_ > 0);
 
@@ -177,13 +177,13 @@ struct ref_count_traits<T> {
 
   static long use_count(void* shared_state) noexcept {
     assume(shared_state);
-    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+    auto rc = static_cast<ref_counted*>(shared_state);
 
     return rc->ref_count_;
   }
 
   static T* resolve(void* shared_state) noexcept {
-    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+    auto rc = static_cast<ref_counted*>(shared_state);
     return static_cast<T*>(rc);
   }
 
