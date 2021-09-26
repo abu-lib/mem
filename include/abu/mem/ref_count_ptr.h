@@ -1,6 +1,6 @@
 // Copyright 2021 Francois Chabot
 
-// Licensed under the Apache License, Version 2.0 (the "License");
+// Licensed under the Apache License, Version 2.0 (the "License")
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 
@@ -20,15 +20,6 @@
 
 #include "abu/mem/check.h"
 
-namespace gsl {
-template <typename T>
-concept Pointer = std::is_pointer_v<T>;
-
-template <Pointer T>
-using owner = T;
-
-}  // namespace gsl
-
 namespace abu::mem {
 
 namespace details_ {
@@ -39,16 +30,17 @@ struct basic_shared_state {
   basic_shared_state& operator=(const basic_shared_state&) = delete;
   basic_shared_state& operator=(basic_shared_state&&) = delete;
 
-  virtual ~basic_shared_state() {}
+  virtual ~basic_shared_state() = default;
 
   long ref_count = 0;
   void* ptr = nullptr;
 };
 
 template <typename T>
-struct owned_shared_state : basic_shared_state {
+struct owned_shared_state final : basic_shared_state {
   template <typename... Args>
-  owned_shared_state(Args&&... args) : obj(std::forward<Args>(args)...) {
+  explicit owned_shared_state(Args&&... args)
+      : obj(std::forward<Args>(args)...) {
     ptr = &obj;
   }
 
@@ -56,14 +48,14 @@ struct owned_shared_state : basic_shared_state {
   owned_shared_state(owned_shared_state&&) = delete;
   owned_shared_state& operator=(const owned_shared_state&) = delete;
   owned_shared_state& operator=(owned_shared_state&&) = delete;
-  ~owned_shared_state() = default;
+  ~owned_shared_state() override = default;
 
   T obj;
 };
 
 template <typename T>
-struct referenced_shared_state : basic_shared_state {
-  referenced_shared_state(T* init) {
+struct referenced_shared_state final : basic_shared_state {
+  explicit referenced_shared_state(T* init) {
     ptr = init;
   }
   referenced_shared_state(const referenced_shared_state&) = delete;
@@ -71,7 +63,7 @@ struct referenced_shared_state : basic_shared_state {
   referenced_shared_state& operator=(const referenced_shared_state&) = delete;
   referenced_shared_state& operator=(referenced_shared_state&&) = delete;
 
-  ~referenced_shared_state() {
+  ~referenced_shared_state() override {
     delete static_cast<T*>(ptr);
   }
 };
@@ -79,10 +71,10 @@ struct referenced_shared_state : basic_shared_state {
 
 template <typename T>
 struct ref_count_traits {
-  static gsl::owner<void*> create_shared_state(T* ptr) noexcept {
+  static void* create_shared_state(T* ptr) noexcept {
     assume(ptr);
-    gsl::owner<details_::referenced_shared_state<T>*> shared_state =
-        new details_::referenced_shared_state<T>(ptr);
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+    auto shared_state = new details_::referenced_shared_state<T>(ptr);
     shared_state->ref_count = 1;
     return shared_state;
   }
@@ -96,13 +88,13 @@ struct ref_count_traits {
 
   static void remove_ref(void* shared_state) noexcept {
     assume(shared_state);
-    gsl::owner<details_::basic_shared_state*> bss =
-        static_cast<gsl::owner<details_::basic_shared_state*>>(shared_state);
+    auto bss = static_cast<details_::basic_shared_state*>(shared_state);
 
     assume(bss->ref_count > 0);
     bss->ref_count -= 1;
 
     if (bss->ref_count == 0) {
+      // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
       delete bss;
     }
   }
@@ -123,7 +115,8 @@ struct ref_count_traits {
 
   template <typename... Args>
   static void* make_obj_and_shared_state(Args&&... args) {
-    gsl::owner<details_::basic_shared_state*> shared_state =
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+    auto shared_state =
         new details_::owned_shared_state<T>(std::forward<Args>(args)...);
     shared_state->ref_count = 1;
     return shared_state;
@@ -157,39 +150,42 @@ struct ref_count_traits<T> {
 
   static void add_ref(void* shared_state) noexcept {
     assume(shared_state);
-    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+    auto rc = static_cast<ref_counted*>(shared_state);
 
     rc->ref_count_ += 1;
   }
 
   static void remove_ref(void* shared_state) noexcept {
     assume(shared_state);
-    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+    auto rc = static_cast<ref_counted*>(shared_state);
 
     assume(rc->ref_count_ > 0);
 
     rc->ref_count_ -= 1;
     if (rc->ref_count_ == 0) {
-      gsl::owner<T*> obj = static_cast<gsl::owner<T*>>(rc);
+      auto obj = static_cast<T*>(rc);
+      // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
       delete obj;
     }
   }
 
   static long use_count(void* shared_state) noexcept {
     assume(shared_state);
-    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+    auto rc = static_cast<ref_counted*>(shared_state);
 
     return rc->ref_count_;
   }
 
   static T* resolve(void* shared_state) noexcept {
-    ref_counted* rc = static_cast<ref_counted*>(shared_state);
+    auto rc = static_cast<ref_counted*>(shared_state);
     return static_cast<T*>(rc);
   }
 
   template <typename... Args>
+
   static void* make_obj_and_shared_state(Args&&... args) {
-    gsl::owner<ref_counted*> result = new T(std::forward<Args>(args)...);
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+    auto result = new T(std::forward<Args>(args)...);
     result->ref_count_ = 1;
     return result;
   }
@@ -318,6 +314,7 @@ class ref_count_ptr {
 
  private:
   void* handle_() const noexcept {
+    // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDelete)
     return shared_state_;
   }
 
